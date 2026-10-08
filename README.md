@@ -372,6 +372,21 @@ const client = HttpClient.create({
 });
 ```
 
+`client.circuits()` returns a snapshot of every enabled breaker that has seen a request, and `[]` when none is configured. Each entry is a copy, so changing it has no effect on the breaker:
+
+```typescript
+import { HttpClient } from "@vereda/http";
+
+const client = HttpClient.create({ timeout: { attemptMs: 5_000 }, circuitBreaker: { enabled: true } });
+
+for (const { partition, state, failures, nextAttemptAt } of client.circuits()) {
+  // state: "closed" | "open" | "half_open"; openedAt/nextAttemptAt are set unless closed
+  console.log(partition, state, failures, nextAttemptAt);
+}
+```
+
+`failures` counts consecutive failures, or failures inside the rolling window when `window` is set. The move from open to half-open happens when a request arrives, so a breaker with no traffic stays `open` after `nextAttemptAt` has passed. The next request it admits becomes the half-open trial.
+
 ### Typed results
 
 Pass a `parse` function to validate and type the response body. `parse` is just `(data: unknown) => T`, and any validator that throws on failure works. A failed parse resolves the ticket with a `ValidationError` and is never retried. With `parse` set, so does a body that isn't valid JSON, including an empty one (a `204`, or any `HEAD` response): the server answered, and asking again would get the same answer.
@@ -634,7 +649,7 @@ Because everything that concerns a single dependency is tagged with `partition` 
 
 ## Documentation
 
-- **[Operations guide](docs/operations.md)** — sizing concurrency and queues, `attemptMs` vs. `totalMs`, reading `partitions()`, wiring a metrics sink, the shutdown sequence, and log redaction.
+- **[Operations guide](docs/operations.md)** — sizing concurrency and queues, `attemptMs` vs. `totalMs`, reading `partitions()` and `circuits()`, wiring a metrics sink, the shutdown sequence, and log redaction.
 - **[API reference](https://riosgabriel.github.io/vereda/)** — generated from source via TypeDoc on every push to `main`; every public option documents its default.
 
 ## Versioning and support
