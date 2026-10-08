@@ -97,6 +97,25 @@ describe("Bulkhead", () => {
 		expect(ran).toBe(true);
 	});
 
+	it("releases the slot when the task itself rejects (regression)", async () => {
+		// runTask() frees the concurrency slot in both the fulfilled and the
+		// rejected branch; only the fulfilled branch was covered. A regression
+		// there would leak the slot, leaving `running` stuck above 0 and the
+		// partition stalled once the limit is reached.
+		const bh = new Bulkhead("test", { concurrency: 1 });
+		const boom = new Error("task blew up");
+
+		await expect(bh.run(() => Promise.reject(boom))).rejects.toBe(boom);
+		expect(bh.runningCount).toBe(0);
+
+		// A leaked slot would leave this task waiting forever (concurrency: 1).
+		let ran = false;
+		await bh.run(async () => {
+			ran = true;
+		});
+		expect(ran).toBe(true);
+	});
+
 	it("releases the semaphore permit before draining the next waiter (regression: was ordered the other way, spuriously rejecting a waiter with a permit about to free)", async () => {
 		// Before the fix, `.finally(release)` ran the semaphore release AFTER
 		// _releaseSlot() had already synchronously drained the bulkhead's own
